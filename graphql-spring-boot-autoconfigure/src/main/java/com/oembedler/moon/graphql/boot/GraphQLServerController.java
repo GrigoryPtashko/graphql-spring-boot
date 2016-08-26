@@ -22,8 +22,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Lists;
 import com.oembedler.moon.graphql.engine.GraphQLSchemaHolder;
 import com.oembedler.moon.graphql.engine.execute.GraphQLQueryExecutor;
+import graphql.ErrorType;
+import graphql.ExceptionWhileDataFetching;
 import graphql.ExecutionResult;
 import graphql.ExecutionResultImpl;
+import graphql.GraphQLError;
+import graphql.language.SourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,9 +38,14 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
+
+import static graphql.ErrorType.DataFetchingException;
 
 /**
  * @author <a href="mailto:java.lang.RuntimeException@gmail.com">oEmbedler Inc.</a>
@@ -158,8 +167,38 @@ public class GraphQLServerController {
         final ExecutionResult executionResult = evaluate(query, operationName, graphQLContext, variables, graphQLSchemaHolder);
 
         if (executionResult.getErrors().size() > 0) {
-            result.put(DEFAULT_ERRORS_KEY, executionResult.getErrors());
+            List<GraphQLError> errors = new LinkedList<>();
+            for (GraphQLError error : executionResult.getErrors()) {
+                if (error instanceof ExceptionWhileDataFetching &&
+                        ((ExceptionWhileDataFetching) error).getException().getCause() != null &&
+                        ((ExceptionWhileDataFetching) error).getException().getCause() instanceof InvocationTargetException &&
+                        ((InvocationTargetException) ((ExceptionWhileDataFetching) error).getException().getCause()).getTargetException() != null) {
+                    GraphQLError newError = new GraphQLError() {
+                        @Override
+                        public String getMessage() {
+                            return ((InvocationTargetException) ((ExceptionWhileDataFetching) error).getException()
+                                    .getCause()).getTargetException().getMessage();
+                        }
+
+                        @Override
+                        public List<SourceLocation> getLocations() {
+                            return null;
+                        }
+
+                        @Override
+                        public ErrorType getErrorType() {
+                            return DataFetchingException;
+                        }
+                    };
+
+                    errors.add(newError);
+                } else {
+                    errors.add(error);
+                }
+            }
+            result.put(DEFAULT_ERRORS_KEY, errors);
             LOGGER.error("Errors: {}", executionResult.getErrors());
+            LOGGER.error("Errors for client: {}", errors);
         }
 
         result.put(DEFAULT_DATA_KEY, executionResult.getData());
