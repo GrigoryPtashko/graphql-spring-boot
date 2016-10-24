@@ -216,7 +216,7 @@ public class GraphQLServerController {
             executionResult = new ExecutionResultImpl(Lists.newArrayList(new ErrorGraphQLSchemaUndefined()));
         } else {
             try {
-                GraphQLQueryExecutor graphQLQueryExecutor = GraphQLQueryExecutor.create(graphQLSchemaHolder)
+                GraphQLQueryExecutor graphQLQueryExecutor = GraphQLQueryExecutor.create(graphQLSchemaHolder, graphQLProperties)
                         .query(query).context(graphQLContext);
 
                 if (variables != null)

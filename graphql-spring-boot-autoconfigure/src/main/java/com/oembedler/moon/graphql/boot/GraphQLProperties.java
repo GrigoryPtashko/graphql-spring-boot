@@ -43,6 +43,7 @@ public class GraphQLProperties {
         private String uploadMaxFileSize;
         private String uploadMaxRequestSize;
         private Boolean suppressSpringResponseCodes;
+        private Boolean validateRequests;
 
         public String getMapping() {
             return mapping;
@@ -90,6 +91,14 @@ public class GraphQLProperties {
 
         public void setSuppressSpringResponseCodes(Boolean suppressSpringResponseCodes) {
             this.suppressSpringResponseCodes = suppressSpringResponseCodes;
+        }
+
+        public Boolean isValidateRequests() {
+            return validateRequests;
+        }
+
+        public void setValidateRequests(Boolean validateRequests) {
+            this.validateRequests = validateRequests;
         }
     }
 
