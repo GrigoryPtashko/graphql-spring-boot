@@ -229,6 +229,7 @@ public class GraphQLServerController {
 
             } catch (Exception e) {
                 LOGGER.error("Error occurred evaluating query: {}", query);
+                LOGGER.error("", e);
                 executionResult = new ExecutionResultImpl(Lists.newArrayList(new ErrorGraphQLQueryEvaluation()));
             }
         }
