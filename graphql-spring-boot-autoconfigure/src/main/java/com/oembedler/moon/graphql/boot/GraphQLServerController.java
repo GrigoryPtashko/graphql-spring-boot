@@ -197,11 +197,13 @@ public class GraphQLServerController {
                 }
             }
             result.put(DEFAULT_ERRORS_KEY, errors);
+            result.put(DEFAULT_DATA_KEY, null);
             LOGGER.error("Errors: {}", executionResult.getErrors());
             LOGGER.error("Errors for client: {}", errors);
+        } else {
+            result.put(DEFAULT_DATA_KEY, executionResult.getData());
         }
 
-        result.put(DEFAULT_DATA_KEY, executionResult.getData());
         return result;
     }
 
