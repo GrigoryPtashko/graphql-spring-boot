@@ -52,6 +52,17 @@ public class GraphQLWebAutoConfiguration {
     @Value("${graphql.server.mapping:/graphql}")
     private String graphQLServerMapping;
 
+    private final GraphQLProperties graphQLProperties;
+    private final GraphQLSchemaLocator graphQLSchemaLocator;
+
+    public GraphQLWebAutoConfiguration(
+        GraphQLProperties graphQLProperties,
+        GraphQLSchemaLocator graphQLSchemaLocator) {
+        this.graphQLProperties = graphQLProperties;
+        this.graphQLSchemaLocator = graphQLSchemaLocator;
+    }
+
+
     @Bean
     @ConditionalOnProperty(value = "graphql.server.corsEnabled", havingValue = "true", matchIfMissing = true)
     public WebMvcConfigurer corsConfigurer() {
@@ -66,7 +77,7 @@ public class GraphQLWebAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(GraphQLServerController.class)
     public GraphQLServerController basicGraphQLController() {
-        return new GraphQLServerController();
+        return new GraphQLServerController(graphQLProperties, graphQLSchemaLocator);
     }
 
     @Bean

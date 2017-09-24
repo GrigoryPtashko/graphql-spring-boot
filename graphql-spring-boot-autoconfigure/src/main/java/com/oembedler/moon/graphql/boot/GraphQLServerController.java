@@ -19,21 +19,29 @@
 package com.oembedler.moon.graphql.boot;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.collect.Lists;
 import com.oembedler.moon.graphql.engine.GraphQLSchemaHolder;
-import com.oembedler.moon.graphql.engine.execute.GraphQLQueryExecutor;
 import graphql.ErrorType;
 import graphql.ExceptionWhileDataFetching;
+import graphql.ExecutionInput;
 import graphql.ExecutionResult;
 import graphql.ExecutionResultImpl;
+import graphql.GraphQL;
 import graphql.GraphQLError;
+import graphql.execution.preparsed.PreparsedDocumentEntry;
 import graphql.language.SourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletRequest;
@@ -65,22 +73,29 @@ public class GraphQLServerController {
     public static final String HEADER_SCHEMA_NAME = "graphql-schema";
 
     // ---
-
-    @Autowired
-    private GraphQLProperties graphQLProperties;
-    @Autowired
-    private GraphQLSchemaLocator graphQLSchemaLocator;
-
+    private final GraphQLProperties graphQLProperties;
+    private final GraphQLSchemaLocator graphQLSchemaLocator;
+    private final Cache<String, PreparsedDocumentEntry> queryDocsCache;
     private ObjectMapper objectMapper = new ObjectMapper();
+
+    public GraphQLServerController(GraphQLProperties graphQLProperties, GraphQLSchemaLocator graphQLSchemaLocator) {
+        this.graphQLProperties = graphQLProperties;
+        this.graphQLSchemaLocator = graphQLSchemaLocator;
+
+        this.queryDocsCache = Caffeine.newBuilder().maximumSize(10_000).build();
+        ;
+    }
 
     // ---
 
     @RequestMapping(method = RequestMethod.GET)
-    public ResponseEntity<Map<String, Object>> getJson(@RequestParam(DEFAULT_QUERY_KEY) String query,
-                                                       @RequestParam(value = DEFAULT_VARIABLES_KEY, required = false) String variables,
-                                                       @RequestParam(value = DEFAULT_OPERATION_NAME_KEY, required = false) String operationName,
-                                                       @RequestHeader(value = HEADER_SCHEMA_NAME, required = false) String graphQLSchemaName,
-                                                       HttpServletRequest httpServletRequest) throws IOException {
+    public ResponseEntity<Map<String, Object>> getJson(
+        @RequestParam(DEFAULT_QUERY_KEY) String query,
+        @RequestParam(value = DEFAULT_VARIABLES_KEY, required = false) String variables,
+        @RequestParam(value = DEFAULT_OPERATION_NAME_KEY, required = false) String operationName,
+        @RequestHeader(value = HEADER_SCHEMA_NAME, required = false) String graphQLSchemaName,
+
+        HttpServletRequest httpServletRequest) throws IOException {
 
         final GraphQLContext graphQLContext = new GraphQLContext();
         graphQLContext.setHttpRequest(httpServletRequest);
@@ -170,9 +185,9 @@ public class GraphQLServerController {
             List<GraphQLError> errors = new LinkedList<>();
             for (GraphQLError error : executionResult.getErrors()) {
                 if (error instanceof ExceptionWhileDataFetching &&
-                        ((ExceptionWhileDataFetching) error).getException().getCause() != null &&
-                        ((ExceptionWhileDataFetching) error).getException().getCause() instanceof InvocationTargetException &&
-                        ((InvocationTargetException) ((ExceptionWhileDataFetching) error).getException().getCause()).getTargetException() != null) {
+                    ((ExceptionWhileDataFetching) error).getException().getCause() != null &&
+                    ((ExceptionWhileDataFetching) error).getException().getCause() instanceof InvocationTargetException &&
+                    ((InvocationTargetException) ((ExceptionWhileDataFetching) error).getException().getCause()).getTargetException() != null) {
                     GraphQLError newError = new GraphQLError() {
                         @Override
                         public String getMessage() {
@@ -207,32 +222,46 @@ public class GraphQLServerController {
         return result;
     }
 
-    private ExecutionResult evaluate(final String query,
-                                     final String operationName,
-                                     final GraphQLContext graphQLContext,
-                                     final Map<String, Object> variables,
-                                     final GraphQLSchemaHolder graphQLSchemaHolder) {
+    private ExecutionResult evaluate(
+        final String query,
+        final String operationName,
+        final GraphQLContext graphQLContext,
+        final Map<String, Object> variables,
+        final GraphQLSchemaHolder graphQLSchemaHolder) {
+
         ExecutionResult executionResult;
 
         if (graphQLSchemaHolder == null) {
-            executionResult = new ExecutionResultImpl(Lists.newArrayList(new ErrorGraphQLSchemaUndefined()));
+            executionResult =
+                new ExecutionResultImpl(
+                    Lists.newArrayList(new ErrorGraphQLSchemaUndefined()));
         } else {
             try {
-                GraphQLQueryExecutor graphQLQueryExecutor = GraphQLQueryExecutor.create(graphQLSchemaHolder, graphQLProperties)
-                        .query(query).context(graphQLContext);
+                ExecutionInput.Builder executionInput =
+                    ExecutionInput.newExecutionInput()
+                        .query(query)
+                        .context(graphQLContext);
 
-                if (variables != null)
-                    graphQLQueryExecutor.arguments(variables);
+                if (variables != null) {
+                    executionInput.variables(variables);
+                }
 
-                if (StringUtils.hasText(operationName))
-                    graphQLQueryExecutor.operation(operationName);
+                if (StringUtils.hasText(operationName)) {
+                    executionInput.operationName(operationName);
+                }
 
-                executionResult = graphQLQueryExecutor.execute();
+                GraphQL gql =
+                    GraphQL.newGraphQL(graphQLSchemaHolder.getGraphQLSchema())
+                        .preparsedDocumentProvider(queryDocsCache::get)
+                        .build();
 
-            } catch (Exception e) {
+                executionResult = gql.execute(executionInput);
+            } catch (Exception ex) {
                 LOGGER.error("Error occurred evaluating query: {}", query);
-                LOGGER.error("", e);
-                executionResult = new ExecutionResultImpl(Lists.newArrayList(new ErrorGraphQLQueryEvaluation()));
+                LOGGER.error("", ex);
+                executionResult =
+                    new ExecutionResultImpl(
+                        Lists.newArrayList(new ErrorGraphQLQueryEvaluation()));
             }
         }
 
