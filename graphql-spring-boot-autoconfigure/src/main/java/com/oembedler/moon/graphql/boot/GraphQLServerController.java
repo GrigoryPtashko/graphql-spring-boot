@@ -31,6 +31,7 @@ import graphql.ExecutionResultImpl;
 import graphql.GraphQL;
 import graphql.GraphQLError;
 import graphql.execution.preparsed.PreparsedDocumentEntry;
+import graphql.introspection.IntrospectionQuery;
 import graphql.language.SourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +46,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.transaction.Transactional;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
@@ -87,6 +89,24 @@ public class GraphQLServerController {
     }
 
     // ---
+
+    @RequestMapping(value = "/schema", method = RequestMethod.GET)
+    public ResponseEntity<Map<String, Object>> getSchema(
+        @RequestHeader(value = HEADER_SCHEMA_NAME, required = false) String graphQLSchemaName) {
+
+        final GraphQLSchemaHolder graphQLSchemaHolder = getGraphQLSchemaContainer(graphQLSchemaName);
+        GraphQL gql =
+            GraphQL.newGraphQL(graphQLSchemaHolder.getGraphQLSchema())
+                .preparsedDocumentProvider(queryDocsCache::get)
+                .build();
+        final Map<String, Object> result = new LinkedHashMap<>();
+        result.put(
+            DEFAULT_DATA_KEY,
+            gql.execute(IntrospectionQuery.INTROSPECTION_QUERY).getData());
+
+        return ResponseEntity.ok(result);
+    }
+
 
     @RequestMapping(method = RequestMethod.GET)
     public ResponseEntity<Map<String, Object>> getJson(

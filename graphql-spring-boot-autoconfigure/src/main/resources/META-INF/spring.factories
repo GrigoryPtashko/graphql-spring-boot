@@ -1,2 +1,5 @@
 org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
 com.oembedler.moon.graphql.boot.GraphQLAutoConfiguration
+
+org.springframework.boot.diagnostics.FailureAnalyzer=\
+com.hashnews.RuntimeExceptionFailureAnalyzer

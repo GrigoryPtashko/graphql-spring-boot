@@ -87,7 +87,7 @@ public class GraphQLAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public GraphQLSchemaBuilder graphQLSchemaBuilder() {
-        return new GraphQLSchemaBuilder(graphQLSchemaConfig(), graphQLSchemaBeanFactory());
+        return new GraphQLSchemaBuilder(graphQLSchemaConfig(), graphQLSchemaBeanFactory(), null);
     }
 
     @Bean
